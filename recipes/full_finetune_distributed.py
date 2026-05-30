@@ -41,6 +41,7 @@ from torchtune.training.checkpointing._checkpoint_client import (
     CheckpointClient,
     TrainingProgress,
 )
+from torchtune.training.loss_adaptive_lr import FinchLRModifier
 from torchtune.training.lr_schedulers import get_lr
 from torchtune.training.quantization import (
     convert_to_float8_training,
@@ -494,6 +495,18 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
             num_training_steps=self.total_epochs * self._steps_per_epoch,
             last_epoch=self.global_step - 1,
         )
+
+        # Optional FINCH loss-adaptive LR modulation to curb catastrophic
+        # forgetting (https://arxiv.org/abs/2605.20005). Rides on top of the
+        # base LR scheduler above; disabled unless `finch.enabled=True`.
+        finch_cfg = cfg.get("finch", None)
+        self._finch_lr_modifier = (
+            FinchLRModifier.from_config(finch_cfg)
+            if finch_cfg is not None and finch_cfg.get("enabled", False)
+            else None
+        )
+        if self._finch_lr_modifier is not None and self._is_rank_zero:
+            self._logger.info("FINCH loss-adaptive LR modulation is enabled.")
 
         # Set up profiler, returns DummyProfiler (nullcontext object with no-op `step` method)
         # if cfg is missing profiler key or if `cfg.profiler.enabled = False`
@@ -1067,6 +1080,15 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
                         precompute_float8_dynamic_scale_for_fsdp(self._model)
 
                     loss_to_log = running_loss.detach().item() / num_tokens
+
+                    # FINCH: scale next step's LR by the current loss so high-loss
+                    # batches induce less forgetting (https://arxiv.org/abs/2605.20005).
+                    if (
+                        self._finch_lr_modifier is not None
+                        and not self._optimizer_in_bwd
+                    ):
+                        self._finch_lr_modifier.step(loss_to_log, self._optimizer)
+
                     pbar.update(1)
                     pbar.set_description(
                         f"{curr_epoch + 1}|{self.global_step}|Loss: {loss_to_log}"
