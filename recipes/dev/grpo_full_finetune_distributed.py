@@ -21,6 +21,7 @@ from torchtune import config, generation, modules, rlhf, training, utils
 from torchtune.config._utils import _get_component_from_path
 from torchtune.datasets import ConcatDataset
 from torchtune.dev.rl.generation import generate
+from torchtune.dev.rl.multidim_advantage import group_relative_advantages
 from torchtune.dev.rl.rewards import batched_rewards
 from torchtune.dev.rl.types import GRPOStats, GRPOTrajectory
 from torchtune.modules import local_kv_cache
@@ -652,14 +653,15 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         rewards = rewards.to(self._device)  # [B, G, num_reward_funcs]
         successes = successes.to(self._device)  # [B, G, num_reward_funcs]
 
-        # Aggregate rewards and successes across reward functions
+        # GPRL: compute per-dimension group-relative advantages so each reward
+        # function is normalized on its own scale before aggregation. This stops
+        # any single axis from dominating the update (single-axis reward
+        # hacking), unlike collapsing to a scalar reward first.
+        advantages = group_relative_advantages(rewards)  # [B, G, D] -> [B x G]
+
+        # Aggregate raw rewards and successes across reward functions for logging
         rewards = rewards.sum(dim=-1)  # [B, G]
         successes = successes.sum(dim=-1)  # [B, G]
-
-        advantages = (rewards - rewards.mean(1, keepdim=True)) / (
-            rewards.std(1, keepdim=True) + 1e-4
-        )
-        advantages = advantages.reshape(batch_size * grpo_size)  # flatten
         del responses
         torch.cuda.empty_cache()
 

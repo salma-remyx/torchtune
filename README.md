@@ -382,3 +382,22 @@ If you find the torchtune library useful, please cite it in your work as below.
 ## License
 
 torchtune is released under the [BSD 3 license](./LICENSE). However you may have other legal obligations that govern your use of other content, such as the terms of service for third-party models.
+
+&nbsp;
+
+## Multi-dimensional group-relative advantages — adapted from *General Preference Reinforcement Learning*
+
+The distributed GRPO recipe (`recipes/dev/grpo_full_finetune_distributed.py`) computes
+**per-dimension group-relative advantages** rather than collapsing every reward function
+into a single scalar before the policy update. Each reward dimension is normalized on its
+own scale within the GRPO group, so no single axis can dominate the update purely because
+of its raw magnitude — the core mechanism *General Preference Reinforcement Learning*
+([arXiv:2605.18721](https://arxiv.org/abs/2605.18721)) uses to resist single-axis reward
+hacking. The logic lives in `torchtune/dev/rl/multidim_advantage.py`
+(`group_relative_advantages`), which also exposes a lightweight single-axis-dominance
+diagnostic mirroring GPRL's drift monitor. GPRL's context-dependent eigenvalue weighting
+and full closed-loop trust-region controller are intentionally out of scope; uniform
+per-dimension normalization already removes the raw-magnitude domination that scalar GRPO
+suffers from.
+
+Contributed via [Remyx Recommendation](https://engine.remyx.ai).
