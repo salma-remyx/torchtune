@@ -13,7 +13,7 @@ jobs:
       REMYX_API_KEY: ${{ secrets.REMYX_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
-      - uses: remyxai/remyx-recommendation-action@fix/eval-findings-remyx-62
+      - uses: remyxai/remyx-recommendation-action@v1.1.5
         with:
           interest-id: 7dcbb63b-fe63-4763-865a-f36af31cf6f8
           rate-limit-days: 0
