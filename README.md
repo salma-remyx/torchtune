@@ -382,3 +382,27 @@ If you find the torchtune library useful, please cite it in your work as below.
 ## License
 
 torchtune is released under the [BSD 3 license](./LICENSE). However you may have other legal obligations that govern your use of other content, such as the terms of service for third-party models.
+
+&nbsp;
+
+## Loss-adaptive learning rates (FINCH) — adapted from [Fine-Tuning Without Forgetting via Loss-Adaptive Learning Rates](https://arxiv.org/abs/2605.20005v1)
+
+The `full_finetune_distributed` recipe can optionally modulate its learning
+rate based on the current training loss to curb catastrophic forgetting. Per
+the paper, per-step forgetting is bounded by `lr * sqrt(loss)`, so FINCH
+*reduces* the LR on high-loss batches and *restores* it as the loss converges,
+all while leaving the fine-tuning objective unchanged. The schedule
+(`torchtune/training/loss_adaptive_lr.py`) rides on top of whatever base LR
+scheduler is configured, so it composes with cosine warmup, constant LR, etc.
+
+Enable it from your config:
+
+```yaml
+finch:
+  enabled: True
+  min_scale: 0.1   # floor on the LR multiplier (high-loss batches)
+  max_scale: 1.0   # raise above 1.0 to also speed up once loss < anchor
+  smoothing: 0.0   # optional EMA over loss to damp single-batch noise
+```
+
+Contributed via [Remyx Recommendation](https://engine.remyx.ai).
